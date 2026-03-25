@@ -211,11 +211,7 @@ data-engineering-zoomcamp/
 homework/
 markdowns/
 data/
-!markdowns/
-!markdowns/README.md
-!markdowns/plan.md
-!markdowns/logs.md
-!markdowns/TODOS.md
+my-creds/
 
 # Local broker tooling downloads
 rpk

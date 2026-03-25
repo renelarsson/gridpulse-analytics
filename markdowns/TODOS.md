@@ -55,7 +55,7 @@ This file tracks planning and implementation-readiness tasks only. It should sta
 
 ## Deferred Until Explicit Implementation Start
 
-- [ ] Create ingestion code with dlt.
+- [x] Create ingestion code with dlt.
 - [ ] Create Terraform for GCP resources.
 - [x] Create Redpanda producer or replay tooling.
 - [x] Create PyFlink jobs.
@@ -76,4 +76,10 @@ This file tracks planning and implementation-readiness tasks only. It should sta
 - [x] Create and validate a local day-ahead sample download script.
 - [x] Create and validate a local day-ahead normalization script.
 - [x] Stand up the local container stack for Redpanda, PostgreSQL, and Flink.
-- [ ] Record the Step 9 PostgreSQL validation queries and their expected result shape.
+- [x] Record the Step 9 PostgreSQL validation queries and their expected result shape.
+- [x] Introduce the first `dlt` raw-ingestion slice on top of the already validated local source contract.
+- [x] Validate append-mode backfill for multiple raw files in the local `dlt` path.
+- [x] Validate the first BigQuery raw landing for the Step 11A warehouse path.
+- [ ] Codify the validated BigQuery dataset and service-account setup in Terraform.
+- [ ] Add the first dbt staging model on top of `iso_ne_raw.day_ahead_hourly_lmp_raw`.
+- [ ] Define the first explicit convergence point between the streaming output and the warehouse output.

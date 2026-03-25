@@ -17,7 +17,7 @@ This repository is the capstone project root. The folders `data-engineering-zoom
 
 The first implementation pass will use historical ISO-NE day-ahead hourly LMP data only.
 
-Why this is the right cut now:
+Why this is the right cut (a small scoped piece of work) now:
 
 1. it is reachable from the current environment
 2. it gives a stable first schema to normalize
@@ -54,7 +54,16 @@ The first end-to-end demo should prove this path:
 5. land the result in PostgreSQL
 6. document the commands, outputs, and validation checks clearly enough to repeat
 
-That is the narrowest slice that proves the capstone direction without overbuilding.
+That is the narrowest slice (a small scoped piece of work) that proves the capstone direction without overbuilding.
+
+## Current Verified Status
+
+The first local streaming demo is now verified.
+
+- replay validation completed with `input_rows=29064`, `sent=29064`, and `acked=29064`
+- the running Flink job showed non-zero `Records Sent` and `Records Received` during replay
+- PostgreSQL sink validation returned `26642` rows in `stream_hourly_lmp`
+- sample query output confirmed interpretable hourly aggregates by `location_name`
 
 ---
 ## Operating Principles
@@ -166,7 +175,7 @@ uv add dlt pandas pydantic requests psycopg[binary] kafka-python
 uv add --dev pytest ruff
 ```
 
-- Do not add cloud or dashboard dependencies yet unless they are required for the first local slice.
+- Do not add cloud or dashboard dependencies yet unless they are required for the first local slice (a small scoped piece of work).
 
 **Success:** The repo has one working Python environment and a dependency file that can be recreated by another machine.
 
@@ -499,7 +508,7 @@ uv run python -m src.replay.replay_day_ahead \
 
 - In plain terms, Step 8 is the first end-to-end processing demo:
     - normalized CSV -> replay script -> Redpanda -> Flink aggregation -> PostgreSQL result table
-- That is different from simple message transport, where data only moves from one place to another without being grouped or aggregated.
+- This is different from simple message transport, where data only moves from one place to another without being grouped or aggregated.
 
 **Procedure:** Reproduce Step 8 in the following order.
 
@@ -520,6 +529,7 @@ uv run python -m src.replay.replay_day_ahead \
 uv venv --python 3.12 .venv
 uv sync
 ```
+The uv tool automatically handles the environment activation going forward.
 
 - If the normalized CSV does not already exist, recreate the Step 5 outputs with the main project environment:
 
@@ -534,8 +544,7 @@ uv run python -m src.ingestion.normalize_day_ahead
 docker compose -f ops/docker/compose.local.yml up -d
 ```
 
-    - this starts prebuilt Redpanda, PostgreSQL, Flink JobManager, and Flink TaskManager images
-    - no local image build is required here because `ops/docker/compose.local.yml` references published images directly
+This starts prebuilt `Redpanda`, `PostgreSQL`, `Flink JobManager`, and `Flink TaskManager` images. No local image build is required here because `ops/docker/compose.local.yml` references published images directly.
 
 - Download the connector JARs that the PyFlink job requires before it can talk to Kafka and PostgreSQL:
 
@@ -543,8 +552,7 @@ docker compose -f ops/docker/compose.local.yml up -d
 bash ops/scripts/fetch_flink_jars.sh
 ```
 
-    - this places the Kafka connector, JDBC connector, and PostgreSQL JDBC driver under `ops/flink/jars/`
-    - `src/streaming/hourly_lmp_job.py` checks this directory before submitting the job
+This places the `Kafka connector`, `JDBC connector`, and `PostgreSQL JDBC driver` under `ops/flink/jars/`. `src/streaming/hourly_lmp_job.py` checks this directory before submitting the job.
 
 - Create the dedicated PyFlink environment once:
 
@@ -553,15 +561,15 @@ python3.12 -m venv .venv-flink
 .venv-flink/bin/pip install apache-flink psycopg[binary]
 ```
 
-    - this is a design choice to isolate PyFlink dependencies from the main project environment and avoid conflicts
-    - the main `.venv` remains the default environment for most capstone code
-    - `.venv-flink` exists only for running the PyFlink job locally
+This is a design choice to isolate PyFlink dependencies from the main project environment and avoid conflicts. The main `.venv` remains the default environment for most capstone code
+and `.venv-flink` exists only for running the PyFlink job locally.
 
-- Optional host-side inspection tools:
+Use the containerized tools that already come with the Step 6 stack for inspection. For Step 8, the process is:
 
-    - you do not need a host-installed `rpk` binary or a host-installed `psql` client to complete Step 8
-    - host-installed clients can still be convenient for manual inspection, but the required verification commands can run through Docker Compose service exec calls instead
-    - if host package installation produces `dpkg` or `debconf` lock errors, treat that as package-management noise outside the minimal Step 8 path rather than as a Flink or Redpanda failure
+- Docker Compose starts and keeps Redpanda, PostgreSQL, and Flink running
+- `.venv-flink/bin/python` submits the PyFlink job
+- `docker compose ... exec redpanda rpk ...` verifies the Kafka topic from inside the Redpanda container
+- `docker compose ... exec postgres psql ...` verifies the sink table from inside the PostgreSQL container
 
 - Submit the Step 8 job with the PyFlink environment:
 
@@ -569,19 +577,16 @@ python3.12 -m venv .venv-flink
 .venv-flink/bin/python src/streaming/hourly_lmp_job.py --init-postgres-from-host
 ```
 
-    - `.venv-flink/bin/python` ensures `pyflink` is available
-    - `src/streaming/hourly_lmp_job.py` submits the SQL job to the Flink JobManager at `localhost:8081`
-    - `--init-postgres-from-host` drops and recreates the sink table from the host before the streaming insert starts
+`.venv-flink/bin/python` ensures `pyflink` is available.
+`src/streaming/hourly_lmp_job.py` submits the SQL job to the Flink JobManager at `localhost:8081`.
+`--init-postgres-from-host` drops and recreates the sink table from the host before the streaming insert starts.
 
 - Verify the submitted job before replaying data:
 
 ```bash
 curl -s http://localhost:8081/jobs/overview
 ```
-
-    - the expected running job name is `insert-into_default_catalog.default_database.stream_hourly_lmp`
-    - the expected state is `RUNNING`
-    - the same check can be done visually in the Flink UI at `http://localhost:8081`
+The expected running job name is `insert-into_default_catalog.default_database.stream_hourly_lmp`. The expected state is `RUNNING`. This name comes from the SQL insert target in `src/streaming/hourly_lmp_job.py`: the script executes `INSERT INTO {args.sink_table}` and the default sink table is `stream_hourly_lmp`, so Flink exposes the running insert using that generated name in the REST API and UI.
 
 - Verify the Kafka topic exists before replaying data:
 
@@ -589,8 +594,7 @@ curl -s http://localhost:8081/jobs/overview
 docker compose -f ops/docker/compose.local.yml exec redpanda rpk topic list
 ```
 
-    - the expected topic for Step 8 is `day_ahead_events`
-    - using `docker compose ... exec redpanda rpk ...` avoids requiring a host-installed `rpk`
+The expected topic for Step 8 is `day_ahead_events`.
 
 - Replay the normalized events with the main project environment:
 
@@ -603,8 +607,7 @@ uv run python -m src.replay.replay_day_ahead \
 --acks-timeout-seconds 10
 ```
 
-    - use the full normalized file here, not the 1,000-row small file
-    - the small file only contains one event hour, so it is good for replay testing but not good for proving that hourly windows close and emit output
+Use the full normalized file here, not the 1,000-row small file. The small file only contains one event hour, so it is good for replay testing but not good for proving that hourly windows close and emit output.
 
 **Validation:** Validate the sink output after the replay finishes.
 
@@ -614,7 +617,7 @@ uv run python -m src.replay.replay_day_ahead \
 docker compose -f ops/docker/compose.local.yml ps
 ```
 
-    - Redpanda, PostgreSQL, `flink-jobmanager`, and `flink-taskmanager` should all be up
+`Redpanda`, `PostgreSQL`, `flink-jobmanager`, and `flink-taskmanager` should all be up. 
 
 - If you want to verify PostgreSQL without a host-installed `psql` client, use the service container:
 
@@ -623,8 +626,7 @@ docker compose -f ops/docker/compose.local.yml exec -e PGPASSWORD=postgres postg
 psql -U postgres -d market_data -c "SELECT COUNT(*) AS row_count FROM stream_hourly_lmp;"
 ```
 
-    - this verifies the sink using the PostgreSQL client already present in the database container
-    - a host-installed `psql` client is optional convenience, not a Step 8 requirement
+This verifies the sink using the PostgreSQL client already present in the database container.
 
 - Main inspection query:
 
@@ -635,7 +637,7 @@ ORDER BY avg_lmp_total DESC
 LIMIT 20;
 ```
 
-- This query is the one that shows what the job actually computed: one result row per location per emitted hour.
+This query is the one that shows what the job actually computed. One result row per location per emitted hour.
 
 - A second useful validation query is:
 
@@ -644,12 +646,13 @@ SELECT COUNT(*) AS row_count
 FROM stream_hourly_lmp;
 ```
 
-- This second query does not show the values of the aggregates. It only confirms that rows were written to the sink and gives a quick size check.
+This second query does not show the values of the aggregates. It only confirms that rows were written to the sink and gives a quick size check.
 
 - Working validation result for the current local stack:
     - the job submitted successfully to the Flink JobManager at `localhost:8081`
     - replaying the full normalized file with `--delay-seconds 0 --quiet --verify-acks` produced `input_rows=29064 sent=29064 acked=29064`
     - after that replay, `SELECT COUNT(*) FROM stream_hourly_lmp;` returned `26642`
+    - the Flink UI showed non-zero `Records Sent` and `Records Received` values for the running source and sink operators during replay
 
 **Notes:** These notes explain why the Step 8 procedure is set up this way.
 
@@ -676,8 +679,7 @@ event_time AS TO_TIMESTAMP(
 )
 ```
 
-    - `SUBSTRING(..., 1, 19)` removes the trailing `+00:00` timezone offset so the value matches the format expected by `TO_TIMESTAMP`
-    - here, offset means the timezone difference from UTC; `+00:00` means the timestamp is already in UTC
+`SUBSTRING(..., 1, 19)` removes the trailing `+00:00` timezone offset so the value matches the format expected by `TO_TIMESTAMP`. Here, offset means the timezone difference from UTC; `+00:00` means the timestamp is already in UTC.
 
 - Window definition:
     - use a `60` minute tumbling window over `event_time`
@@ -738,61 +740,261 @@ CREATE TABLE stream_hourly_lmp (
 
 ---
 ### Step 9: Validate the output in PostgreSQL
-**What:**, **Why:**, **How:**, **Success:**
-#### What
 
-Confirm that the stream result lands in a queryable sink.
+**What:** Confirm that the stream result lands in a queryable sink.
 
-#### Why
+**Why:** A working sink is the first proof that the local demo produces inspectable business output.
 
-A working sink is the first proof that the local demo produces inspectable business output.
+**How:** 
 
-#### How
+- Use the PostgreSQL client inside the database container so the validation stays on the current process:
 
-Record at least one verification query, for example:
+```bash
+docker compose -f ops/docker/compose.local.yml exec -T postgres \
+psql -U postgres -d market_data -c "SELECT COUNT(*) AS row_count FROM stream_hourly_lmp;"
+```
+
+For the current validated run, this query returned `26642`.
+
+- Then inspect representative rows:
 
 ```sql
-SELECT location_name, window_start, window_end, avg_lmp_total
+SELECT location_name, window_start, window_end, avg_lmp_total, max_lmp_total, row_count
 FROM stream_hourly_lmp
 ORDER BY avg_lmp_total DESC
 LIMIT 20;
 ```
 
-Record the query result shape and any assumptions about the sample period.
+For the current validated run, the top rows were emitted for the `2026-03-17 11:00:00` to `2026-03-17 12:00:00` window and included populated `avg_lmp_total`, `max_lmp_total`, and `row_count` values.
 
-#### Success
+The expected result shape is:
 
-The sink answers at least one of the milestone business questions.
+- one row per `location_name` per emitted hourly window
+- `window_start` and `window_end` showing the Flink tumbling-window bounds
+- `avg_lmp_total` and `max_lmp_total` populated with numeric aggregates
+- `row_count` showing how many source rows contributed to that location-window result
 
+**Additional Notes:**
+
+- **Validation Queries:**
+  - Row count validation ensures the sink table is populated.
+  - Aggregate inspection confirms the correctness of the tumbling window logic.
+- **Flink Metrics:**
+  - During replay, the Flink UI showed non-zero `Records Sent` and `Records Received` values for the source and sink operators.
+- **Replay Verification:**
+  - Replay metrics confirmed `input_rows=29064`, `sent=29064`, and `acked=29064`.
+
+**Success:** The sink answers at least one of the milestone business questions and the validation proves that the first local replay-to-aggregation-to-PostgreSQL slice (a small scoped piece of work) is complete.
+
+---
 ### Step 10: Introduce dlt for the raw and warehouse path
 
-#### What
+**What:** Bring dlt into the project once the local raw-to-normalized path (the `CSV -> dlt load -> warehouse table` data flow) is clear.
 
-Bring dlt into the project once the local raw-to-normalized path is already understandable.
+**Why:** dlt should formalize ingestion, i.e. know the source structure and assumptions clearly, before dlt automates loading.
 
-#### Why
+**Procedure:** Reproduce Step 10 in the following order.
 
-dlt should formalize ingestion, not hide a broken or unclear source contract.
+- Prerequisites from earlier steps:
+    - Step 2 created the main project environment `.venv` and installed `dlt`
+    - Step 3 defined the first raw historical sample at `data/raw/WW_DALMP_ISO_20260317.csv`
+    - Step 6 introduced the local PostgreSQL service in `ops/docker/compose.local.yml`
+    - Step 5 already proved that the raw file structure is understood outside of `dlt` (the raw file was downloaded, metadata and type rows were skipped, `D` rows were isolated, and a normalized file was produced successfully)
 
-#### How
+- Step 10 keeps the first `dlt` slice intentionally narrow:
+    - one entry point: `src/ingestion/dlt_raw_ingestion.py`
+        - the executed script that starts Step 10
+    - one source file: `data/raw/WW_DALMP_ISO_20260317.csv`
+    - one destination: the local PostgreSQL database already used in the Docker Compose stack
+    - one table: `iso_ne_raw.day_ahead_hourly_lmp_raw`
 
-Use the already validated source and schema mapping to define a dlt pipeline for raw landing into the warehouse path later in the build.
+- Why this is the right cut (a small scoped piece of work):
+    - it adds `dlt` without changing the validated source file format
+    - it keeps the first warehouse-style load local and easy to inspect
+    - it creates one repeatable ingestion command before BigQuery, dbt, or orchestration are introduced
 
-The first dlt goal is not full production coverage. It is to preserve raw source fidelity and make repeated loads explicit.
+- Start only the database service needed for this slice:
 
-#### Success
+```bash
+docker compose -f ops/docker/compose.local.yml up -d postgres
+```
 
-Raw ingestion can be rerun without redefining the source contract.
+This is enough for Step 10 because the first `dlt` slice does not need Redpanda or Flink. The goal here is raw landing (loading source data into storage with minimal transformation), not streaming.
 
+- Wait until PostgreSQL is actually ready before running the `dlt` command:
+
+```bash
+until docker compose -f ops/docker/compose.local.yml exec -T postgres \
+pg_isready -U postgres -d market_data >/dev/null 2>&1; do sleep 1; done
+```
+
+This avoids a startup race where the container is up but the database process is not yet ready to accept client connections.
+
+- Ensure the main project environment includes the PostgreSQL destination extra (optional dependencies for a specific feature) for `dlt`:
+
+```bash
+uv sync
+```
+
+The project dependency set for Step 10 should include `dlt[postgres]`, not just the base `dlt` package (i.e. the packages needed for the Postgres destination). The base package is enough to define the pipeline, but the PostgreSQL destination requires the destination-specific extra dependencies before the load can run.
+
+- If the raw source file is not already present, recreate it with the main project environment:
+
+```bash
+uv run python -m src.ingestion.download_day_ahead
+```
+
+This keeps the Step 10 source aligned with the file already validated in the earlier steps.
+
+- Run the `dlt` pipeline entry point:
+
+```bash
+uv run python -m src.ingestion.dlt_raw_ingestion \
+--input-path data/raw/WW_DALMP_ISO_20260317.csv \
+--dataset-name iso_ne_raw \
+--table-name day_ahead_hourly_lmp_raw \
+--destination postgres \
+--destination-dsn postgresql://postgres:postgres@localhost:5432/market_data \
+--write-disposition replace
+```
+
+What this command does:
+
+- `uv run` executes the pipeline in the main project environment from Step 2
+- `src.ingestion.dlt_raw_ingestion` reads the raw ISO-NE CSV directly
+- `--dataset-name iso_ne_raw` creates a dedicated PostgreSQL schema for this first raw landing slice
+- `--table-name day_ahead_hourly_lmp_raw` makes the table purpose explicit
+- `--destination postgres` keeps the pipeline shape aligned with a later warehouse destination while staying local-first now
+- `--destination-dsn ...` points `dlt` at the local PostgreSQL service already defined in `ops/docker/compose.local.yml`
+- `--write-disposition replace` makes the first demo rerunnable without manual cleanup between tests
+
+- Add the first append-mode backfill slice only after the single-file `replace` run is already working.
+
+- If you want the safest self-test on a clean table, create the test table first with `replace`, then append the second file:
+
+```bash
+uv run python -m src.ingestion.dlt_raw_ingestion \
+--input-path data/raw/WW_DALMP_ISO_20260317.csv \
+--dataset-name iso_ne_raw \
+--table-name day_ahead_hourly_lmp_raw_append_test \
+--destination postgres \
+--destination-dsn postgresql://postgres:postgres@localhost:5432/market_data \
+--write-disposition replace
+
+uv run python -m src.ingestion.dlt_raw_ingestion \
+--input-path data/raw/WW_DALMP_ISO_20260318.csv \
+--dataset-name iso_ne_raw \
+--table-name day_ahead_hourly_lmp_raw_append_test \
+--destination postgres \
+--destination-dsn postgresql://postgres:postgres@localhost:5432/market_data \
+--write-disposition append
+```
+
+This two-step self-test is more robust than dropping the table and immediately rerunning a single append-only command with the same pipeline state.
+
+- If the table already exists and you want a single-command multi-file backfill, this works as expected:
+
+```bash
+uv run python -m src.ingestion.dlt_raw_ingestion \
+--input-path data/raw/WW_DALMP_ISO_20260317.csv \
+--input-path data/raw/WW_DALMP_ISO_20260318.csv \
+--dataset-name iso_ne_raw \
+--table-name day_ahead_hourly_lmp_raw \
+--destination postgres \
+--destination-dsn postgresql://postgres:postgres@localhost:5432/market_data \
+--write-disposition append
+```
+
+What this append-mode backfill adds:
+
+- repeated `--input-path` flags let one run process multiple raw files in sequence
+- `--write-disposition append` keeps the already loaded rows and adds the next files behind them
+- `source_file` remains populated per row, so the loaded table can still be filtered back to each raw report after the backfill
+- this is the right next local warehouse step before moving the same shape into BigQuery
+
+- What the Step 10 code preserves and what it changes:
+    - it preserves the raw data rows from the source CSV instead of loading normalized events
+    - it skips the report metadata rows and the field-type row because those rows are report framing, not tabular market records
+    - it keeps the vendor field values as raw strings in the destination table
+    - it renames the columns to SQL-friendly snake_case so the raw landing table is easier to query locally
+    - it adds `source_file` and `source_row_number` so each loaded row can be traced back to the original report
+
+- Validate that `dlt` wrote rows into PostgreSQL:
+
+```bash
+docker compose -f ops/docker/compose.local.yml exec -T postgres \
+psql -U postgres -d market_data -c 'SELECT COUNT(*) AS row_count FROM "iso_ne_raw"."day_ahead_hourly_lmp_raw";'
+```
+
+This is the Step 10 row-count check. It answers the narrow question for this milestone: did the first `dlt` raw load land rows into a queryable local table?
+
+- For append-mode backfill validation, confirm both total rows and per-file contribution:
+
+```bash
+docker compose -f ops/docker/compose.local.yml exec -T postgres \
+psql -U postgres -d market_data -c 'SELECT source_file, COUNT(*) AS row_count FROM "iso_ne_raw"."day_ahead_hourly_lmp_raw" GROUP BY source_file ORDER BY source_file;'
+```
+
+This query is the practical append-mode check because it verifies that multiple source files contributed rows instead of silently replacing one another.
+
+- A second useful inspection query is:
+
+```bash
+docker compose -f ops/docker/compose.local.yml exec -T postgres \
+psql -U postgres -d market_data -c 'SELECT market_date, hour_ending, location_id, location_name, locational_marginal_price, source_file FROM "iso_ne_raw"."day_ahead_hourly_lmp_raw" ORDER BY source_row_number::int LIMIT 10;'
+```
+
+This confirms that the loaded table still looks like the source report and that the data is inspectable before any downstream normalization or transformation layers are applied.
+
+- Working validation result for the current local Step 10 run:
+    - running `src.ingestion.dlt_raw_ingestion` against `data/raw/WW_DALMP_ISO_20260317.csv` completed successfully after syncing the environment with the PostgreSQL `dlt` extra installed
+    - `SELECT COUNT(*) AS row_count FROM "iso_ne_raw"."day_ahead_hourly_lmp_raw";` returned `29064`
+    - rerunning the same command with `--write-disposition replace` completed successfully again and kept the table at `29064` rows, which confirms that the first Step 10 demo is rerunnable without manual cleanup
+    - a two-file append-mode validation run into `iso_ne_raw.day_ahead_hourly_lmp_raw_append_test` loaded `58128` rows total, split as `29064` rows from `WW_DALMP_ISO_20260317.csv` and `29064` rows from `WW_DALMP_ISO_20260318.csv`
+
+- Record the concrete Step 10 result shape:
+    - destination schema: `iso_ne_raw`
+    - destination table: `day_ahead_hourly_lmp_raw`
+    - expected grain: one row per raw ISO-NE `D` (data row) record from the source CSV
+
+- Notes that matter for this first `dlt` slice:
+    - use PostgreSQL first because it is already part of the validated local stack and is easy to inspect with `psql`
+    - keep `replace` for the first process run so the command is deterministic
+    - switch to `append` later when repeated historical backfills or multi-file loads become the next requirement
+    - do not move this step to BigQuery yet; the point here is to validate the `dlt` shape (overall pipeline structure: source and destination type, table layout, and command pattern) locally before cloud configuration is introduced
+    - the `psutil dependency is not installed` warning from `dlt` progress logging is optional observability noise, not a Step 10 failure; it only means memory stats are unavailable in the progress output
+    - if `docker compose up -d postgres` fails with an OCI runtime error such as `container with given ID already exists`, remove the stopped service container with `docker rm -f docker-postgres-1` and start the service again
+    - if `dlt` fails with `connection refused` or `server closed the connection unexpectedly` immediately after container startup, PostgreSQL is usually not ready yet; rerun only after `pg_isready` succeeds
+
+**Success:** Raw ingestion can be rerun without redefining the source contract (the source data structure/meaning: which columns exist, what row types and timestamps mean, and code assumptions), and the first `dlt` command can be demonstrated without depending on Terraform, dbt, Kestra, or Streamlit.
+
+---
 ### Step 11: Expand to cloud infrastructure
-
+**What:**, **Why:**, **How:**, **Success:**
 #### What
 
 Add GCP, Terraform, Kestra, dbt, and Streamlit only after the first local path is stable.
 
+This step expands the warehouse and orchestration path first. It does not replace the local Redpanda and PyFlink path from Steps 6 to 9.
+
 #### Why
 
 These tools should extend a working base, not be used to discover the base requirements.
+
+The project has two related but different tracks now:
+
+1. historical and warehouse track:
+    - raw ISO-NE files
+    - `dlt`
+    - PostgreSQL first, then BigQuery
+    - dbt, Kestra, and Streamlit later on top of warehouse tables
+2. streaming and real-time processing track:
+    - normalized events
+    - Redpanda
+    - PyFlink
+    - PostgreSQL today as the first inspectable sink
+
+They should converge at shared business definitions and warehouse-ready outputs, not by forcing `dlt` to sit inside the first Redpanda to Flink processing loop.
 
 #### How
 
@@ -804,9 +1006,143 @@ Expansion order:
 4. Kestra flows for non-streaming scheduled work
 5. Streamlit dashboard on top of stable marts
 
+The first Step 11 cloud slice should stay as close as possible to the already validated Step 10 shape:
+
+1. keep the same entry point: `src/ingestion/dlt_raw_ingestion.py`
+2. keep the same dataset and table intent: `iso_ne_raw.day_ahead_hourly_lmp_raw`
+3. change only the destination and credentials
+4. avoid adding dbt, Kestra, or dashboard work until the first BigQuery landing is proven
+
+#### Step 11A: Warehouse cloud path
+
+This is the direct continuation of the Step 10 warehouse-style raw landing work.
+
+- the append-mode backfill follow-up belongs to Step 10 because it still validates local `dlt` loading behavior
+- the BigQuery landing follow-up belongs to Step 11A because it is the first non-local warehouse destination for the same `dlt` shape
+
+How the streaming track fits relative to this order:
+
+1. the Step 10 follow-up can stay local-first for one more slice by adding append-mode backfill for multiple raw files
+2. after that, the next non-local `dlt` slice is Step 11 item 2: land the same raw shape into BigQuery
+3. the existing Redpanda and PyFlink work remains the streaming proof-of-concept path and does not need to be rewritten around `dlt`
+4. if the project later needs cloud streaming, that is a separate follow-on after this step: move the validated Redpanda and PyFlink design to managed cloud infrastructure or a cloud-hosted equivalent while keeping the warehouse track intact
+5. the integration point between the two tracks is downstream data modeling and presentation, where historical `dlt` loads and streaming-derived outputs can be compared, joined, or served together
+
+What this means for immediate next steps after Step 10:
+
+1. Add an append-mode backfill procedure for multiple raw files.
+2. Land the same `dlt` raw shape into BigQuery as the first Step 11 cloud slice.
+3. Add a small README section that links Step 5, Step 8, Step 9, and Step 10 into one end-to-end workflow.
+
+Those are still the right next steps because they reduce uncertainty in the warehouse path without disturbing the already validated local streaming path.
+
+First BigQuery-oriented procedure for Step 11 item 2:
+
+- Ensure the project dependencies include the BigQuery destination extra for `dlt`:
+
+```bash
+uv sync
+```
+
+- Export the service-account path for the local shell session, or pass the same path directly with `--destination-credentials`:
+
+```bash
+export GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/to/gcp-service-account.json
+```
+
+The current `src/ingestion/dlt_raw_ingestion.py` entry point accepts the file path directly for BigQuery and reads the service-account JSON before passing credentials to `dlt`.
+
+- Run the same ingestion entry point against BigQuery:
+
+```bash
+uv run python -m src.ingestion.dlt_raw_ingestion \
+--input-path data/raw/WW_DALMP_ISO_20260317.csv \
+--dataset-name iso_ne_raw \
+--table-name day_ahead_hourly_lmp_raw \
+--destination bigquery \
+--destination-credentials "$GOOGLE_APPLICATION_CREDENTIALS" \
+--write-disposition replace
+```
+
+What changes and what does not in this first cloud slice:
+
+- the source file stays the same
+- the raw row contract stays the same
+- the table name intent stays the same
+- only the destination changes from local PostgreSQL to BigQuery
+
+- Validate the BigQuery landing with the same row-count question in BigQuery SQL:
+
+```sql
+SELECT COUNT(*) AS row_count
+FROM `iso_ne_raw.day_ahead_hourly_lmp_raw`;
+```
+
+- If you want a shell-based validation path from this repo without installing the `bq` CLI, run the BigQuery Python client directly from the project environment:
+
+```bash
+uv run python - <<'PY'
+from google.cloud import bigquery
+
+client = bigquery.Client(project="de-zoomcamp-485107")
+query = """
+SELECT COUNT(*) AS row_count
+FROM `de-zoomcamp-485107.iso_ne_raw.day_ahead_hourly_lmp_raw`
+"""
+for row in client.query(query).result():
+    print(f"row_count={row['row_count']}")
+PY
+```
+
+This is the validated CLI-style check for the current environment because `bq` and `gcloud` are not installed here.
+
+- If you prefer the BigQuery web UI, validate the same result in BigQuery Studio:
+
+1. open the `de-zoomcamp-485107` project in BigQuery Studio
+2. create a new SQL query tab
+3. run the query below:
+
+```sql
+SELECT COUNT(*) AS row_count
+FROM `de-zoomcamp-485107.iso_ne_raw.day_ahead_hourly_lmp_raw`;
+```
+
+4. confirm that the returned count is `29064`
+
+- If you later land the append or backfill test table in BigQuery, use the same per-file validation pattern there:
+
+```sql
+SELECT source_file, COUNT(*) AS row_count
+FROM `de-zoomcamp-485107.iso_ne_raw.day_ahead_hourly_lmp_raw_append_test`
+GROUP BY source_file
+ORDER BY source_file;
+```
+
+This is the first non-local proof for the warehouse track: the same `dlt` shape that worked locally can land in the target cloud warehouse before dbt, Kestra, or Streamlit are added.
+
+- Working validation result for the current Step 11A run:
+    - running `src.ingestion.dlt_raw_ingestion` with destination `bigquery` and the service-account file `my-creds/de-zoomcamp-485107-3cbafa3d7c94.json` completed successfully
+    - the validation query `SELECT COUNT(*) AS row_count FROM `iso_ne_raw.day_ahead_hourly_lmp_raw`;` returned `29064`
+    - the `google-cloud-bigquery-storage is not installed` warning is optional and does not block the BigQuery load; it only means the Storage API client is unavailable for higher-performance reads
+
+- After Step 10 and Step 11A validation, shut down only what you actually started:
+    - local Step 10 only: `docker compose -f ops/docker/compose.local.yml stop postgres`
+    - local streaming stack from Steps 8 and 9: `docker compose -f ops/docker/compose.local.yml down`
+    - full local cleanup including anonymous volumes: `docker compose -f ops/docker/compose.local.yml down -v`
+    - BigQuery does not have a local process to stop, but warehouse storage and repeated queries can incur cloud cost, so avoid unnecessary reruns once validation is complete
+
+#### Step 11B: Later streaming cloud path
+
+This is not the immediate follow-up to Step 10.
+
+- Redpanda and PyFlink were already validated locally in Steps 6 to 9
+- the next streaming-cloud decision should come only after the warehouse cloud path is proven and the target modeled outputs are clearer
+- when this step is taken later, it should document which managed or hosted equivalents replace the local Redpanda and Flink runtime while preserving the validated event flow
+- this later cloud-streaming step should converge with the warehouse path at modeled tables and dashboard inputs, not by forcing `dlt` into the stream-processing loop
+
 #### Success
 
-Cloud and presentation layers are built on top of a proven local-first foundation.
+Cloud and presentation layers are built on top of a proven local-first foundation, while the Redpanda and PyFlink path remains the separate streaming-first branch to extend later rather than being collapsed into the first `dlt` warehouse expansion.
 
 ## First Files To Create When Coding Starts
 

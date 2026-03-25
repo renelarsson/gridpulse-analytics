@@ -15,7 +15,15 @@ The original supporting markdown files are retained for traceability, but this d
 
 - the first implementation pass is now narrowed to historical ISO-NE day-ahead hourly data only
 - real-time hourly data remains a later extension after the base local path is stable
-- `TODOS.md` is intentionally left unchanged for now because that was explicitly requested
+
+## Current Runtime Status
+
+- the first local replay-to-Flink-to-PostgreSQL slice is now validated
+- replay validation completed with `input_rows=29064 sent=29064 acked=29064`
+- PostgreSQL validation completed with `26642` rows in `stream_hourly_lmp`
+- the first local `dlt` raw-ingestion slice is now validated in PostgreSQL
+- append-mode backfill was validated with two raw files and `58128` total rows in the append test table
+- the first BigQuery raw landing is now validated with `29064` rows in `de-zoomcamp-485107.iso_ne_raw.day_ahead_hourly_lmp_raw`
 
 ## Chapter 1: Dataset Validation
 
@@ -264,9 +272,30 @@ This project has two architectural tracks that work together:
 - The connector JARs required by the PyFlink job were downloaded into `ops/flink/jars/` with `bash ops/scripts/fetch_flink_jars.sh`.
 - The job was confirmed in the Flink UI and through the REST endpoint at `http://localhost:8081/jobs/overview` with state `RUNNING`.
 - The Step 8 source topic `day_ahead_events` was verified through the Redpanda container rather than through a host-installed `rpk` binary.
-- PostgreSQL sink validation can be performed either with a host-installed `psql` client or through `docker compose ... exec postgres psql ...`; the host client is optional convenience, not a hard dependency.
+- Replay validation with `uv run python -m src.replay.replay_day_ahead --input-path data/normalized/WW_DALMP_ISO_20260317_normalized.csv --delay-seconds 0 --quiet --verify-acks --acks-timeout-seconds 10` produced `input_rows=29064 sent=29064 acked=29064`.
+- PostgreSQL sink validation through the PostgreSQL container returned `26642` rows in `stream_hourly_lmp` after the replay completed.
+- The Flink UI showed non-zero `Records Sent` and `Records Received` values during replay, confirming that records moved through both the source and sink operators.
+- Sample sink output confirmed one emitted row per location per hour, for example rows in the `2026-03-17 11:00:00` to `2026-03-17 12:00:00` window with populated `avg_lmp_total`, `max_lmp_total`, and `row_count` values.
 - Operational note: host package installation attempts can surface `dpkg` lock, `debconf` lock, or `invoke-rc.d` warnings. Those are package-management issues and are not evidence that the Step 8 PyFlink path is broken.
 - Operational note: the observed Redpanda DNS-resolution issue was a broker address or advertised-host mismatch between client context and Docker networking, not a failure caused by the final `hourly_lmp_job.py` submission command.
+
+## Session Update: 2026-03-25 Step 10 and Step 11A Validation
+
+- Step 10 append-mode follow-up was validated with a safe two-step self-test rather than a dropped-table append-only rerun.
+- The working pattern was:
+  - load `data/raw/WW_DALMP_ISO_20260317.csv` into `iso_ne_raw.day_ahead_hourly_lmp_raw_append_test` with `--write-disposition replace`
+  - append `data/raw/WW_DALMP_ISO_20260318.csv` into the same table with `--write-disposition append`
+- PostgreSQL validation confirmed `29064` rows from each source file and `58128` total rows in the append test table.
+- Runtime lesson: if PostgreSQL is started immediately before a `dlt` run, wait for `pg_isready` before rerunning after any `connection refused` or `server closed the connection unexpectedly` failure.
+- Runtime lesson: if Docker reports an OCI runtime error with `container with given ID already exists`, remove the stale PostgreSQL container with `docker rm -f docker-postgres-1` and start the service again.
+- Step 11A BigQuery raw landing was rerun successfully with:
+  - destination `bigquery`
+  - dataset `iso_ne_raw`
+  - table `day_ahead_hourly_lmp_raw`
+  - credential file `my-creds/de-zoomcamp-485107-3cbafa3d7c94.json`
+- `src.ingestion.dlt_raw_ingestion.py` was updated so a BigQuery service-account file path is read as JSON before being passed into `dlt`.
+- BigQuery validation succeeded with the shell-based Python client query and returned `row_count=29064` for `de-zoomcamp-485107.iso_ne_raw.day_ahead_hourly_lmp_raw`.
+- Operational note: the `google-cloud-bigquery-storage is not installed` message was non-blocking for the successful Step 11A load.
 
 #### Orchestration Layer
 
