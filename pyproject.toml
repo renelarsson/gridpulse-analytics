@@ -5,6 +5,8 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
 dependencies = [
+    "dbt-bigquery>=1.11.1",
+    "dbt-core>=1.11.7",
     "dlt[bigquery,postgres]>=1.23.0",
     "kafka-python>=2.3.0",
     "pandas>=3.0.1",

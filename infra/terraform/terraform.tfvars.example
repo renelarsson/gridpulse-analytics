@@ -1,0 +1,5 @@
+project_id                = "de-zoomcamp-485107"
+region                    = "europe-west1"
+bigquery_location         = "EU"
+raw_dataset_id            = "iso_ne_raw"
+loader_service_account_id = "dbt-bigquery-service-account"

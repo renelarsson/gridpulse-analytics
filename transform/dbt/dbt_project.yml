@@ -1,0 +1,12 @@
+name: de_capstone
+version: 1.0
+config-version: 2
+
+# Define where dbt will look for models
+model-paths: ["models"]
+
+# Specify the default materialization for models
+models:
+  +materialized: view
+
+profile: de_capstone

@@ -1,0 +1,5 @@
+version: 2
+sources:
+  - name: iso_ne_raw
+    tables:
+      - name: day_ahead_hourly_lmp_raw

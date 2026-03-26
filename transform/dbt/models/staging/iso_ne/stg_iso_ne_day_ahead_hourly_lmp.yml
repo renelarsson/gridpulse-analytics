@@ -1,0 +1,5 @@
+version: 2
+
+models:
+  - name: stg_iso_ne_day_ahead_hourly_lmp
+    description: "First staging model for ISO-NE day-ahead hourly LMP data. Column-level tests should be added after the raw BigQuery schema is confirmed."
