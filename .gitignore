@@ -216,3 +216,14 @@ my-creds/
 # Local broker tooling downloads
 rpk
 rpk-linux-amd64.zip
+
+# Terraform local state and provider downloads
+**/.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json

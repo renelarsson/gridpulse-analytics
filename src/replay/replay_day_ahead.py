@@ -2,6 +2,7 @@ import argparse
 import csv
 import json
 import time
+from datetime import datetime, timedelta
 from pathlib import Path
 from time import perf_counter
 
@@ -13,6 +14,9 @@ DEFAULT_TOPIC_NAME = "day_ahead_events"
 DEFAULT_NORMALIZED_DATA_PATH = Path("data/normalized/WW_DALMP_ISO_20260317_normalized.csv")
 EVENT_ORDERING_FIELD = "market_timestamp_utc"
 DEFAULT_REPLAY_DELAY_SECONDS = 0.031
+DEFAULT_WATERMARK_SENTINEL_OFFSET_SECONDS = 3605
+WATERMARK_SENTINEL_FIELD = "replay_control"
+WATERMARK_SENTINEL_VALUE = "watermark_flush"
 
 
 def parse_args() -> argparse.Namespace:
@@ -52,7 +56,7 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help=(
             "Wait for broker acknowledgements for each produced message and "
-            "verify acked_count == input_row_count."
+            "verify the acknowledged count matches the records published in this run."
         ),
     )
     parser.add_argument(
@@ -60,6 +64,23 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=10.0,
         help="Timeout (seconds) when waiting for broker acknowledgements.",
+    )
+    parser.add_argument(
+        "--emit-watermark-sentinel",
+        action="store_true",
+        help=(
+            "Publish one control record after the final real event so a finite replay "
+            "can advance the Flink watermark and close the last hourly windows."
+        ),
+    )
+    parser.add_argument(
+        "--watermark-sentinel-offset-seconds",
+        type=int,
+        default=DEFAULT_WATERMARK_SENTINEL_OFFSET_SECONDS,
+        help=(
+            "How far beyond the final real event timestamp to place the watermark "
+            "sentinel. The default is one hour plus five seconds."
+        ),
     )
     return parser.parse_args()
 
@@ -80,6 +101,24 @@ def load_normalized_data(file_path: Path) -> list[dict[str, str]]:
     return events
 
 
+def build_watermark_sentinel_event(
+    events: list[dict[str, str]],
+    offset_seconds: int,
+) -> dict[str, str]:
+    """Create one control event beyond the final real timestamp to flush windows."""
+    if not events:
+        raise ValueError("Cannot build a watermark sentinel without at least one event.")
+
+    last_event = events[-1]
+    last_timestamp = datetime.fromisoformat(last_event[EVENT_ORDERING_FIELD])
+    sentinel_timestamp = last_timestamp + timedelta(seconds=offset_seconds)
+
+    sentinel_event = {key: "" for key in last_event}
+    sentinel_event[EVENT_ORDERING_FIELD] = sentinel_timestamp.strftime("%Y-%m-%d %H:%M:%S+00:00")
+    sentinel_event[WATERMARK_SENTINEL_FIELD] = WATERMARK_SENTINEL_VALUE
+    return sentinel_event
+
+
 def replay_events(
     producer: KafkaProducer,
     topic: str,
@@ -88,11 +127,22 @@ def replay_events(
     quiet: bool = False,
     verify_acks: bool = False,
     acks_timeout_seconds: float = 10.0,
+    emit_watermark_sentinel: bool = False,
+    watermark_sentinel_offset_seconds: int = DEFAULT_WATERMARK_SENTINEL_OFFSET_SECONDS,
 ) -> tuple[int, int]:
     """Publish normalized events one-by-one in a deterministic order."""
     sent_count = 0
     acked_count = 0
-    for event in events:
+    events_to_publish = list(events)
+    if emit_watermark_sentinel:
+        events_to_publish.append(
+            build_watermark_sentinel_event(
+                events,
+                offset_seconds=watermark_sentinel_offset_seconds,
+            )
+        )
+
+    for event in events_to_publish:
         future = producer.send(topic, value=event)
         if verify_acks:
             future.get(timeout=acks_timeout_seconds)
@@ -121,6 +171,9 @@ def main() -> None:
     if args.acks_timeout_seconds <= 0:
         raise ValueError("--acks-timeout-seconds must be greater than zero.")
 
+    if args.watermark_sentinel_offset_seconds <= 0:
+        raise ValueError("--watermark-sentinel-offset-seconds must be greater than zero.")
+
     if not args.input_path.exists():
         raise FileNotFoundError(
             "Normalized CSV not found at "
@@ -138,7 +191,8 @@ def main() -> None:
     print(
         f"starting replay: file={args.input_path} topic={args.topic} "
         f"events={input_row_count} delay_seconds={args.delay_seconds} "
-        f"verify_acks={args.verify_acks}"
+        f"verify_acks={args.verify_acks} "
+        f"emit_watermark_sentinel={args.emit_watermark_sentinel}"
     )
 
     start_time = perf_counter()
@@ -151,15 +205,18 @@ def main() -> None:
             quiet=args.quiet,
             verify_acks=args.verify_acks,
             acks_timeout_seconds=args.acks_timeout_seconds,
+            emit_watermark_sentinel=args.emit_watermark_sentinel,
+            watermark_sentinel_offset_seconds=args.watermark_sentinel_offset_seconds,
         )
     finally:
         producer.close()
     elapsed_seconds = perf_counter() - start_time
 
-    if args.verify_acks and acked_count != input_row_count:
+    expected_acked_count = input_row_count + int(args.emit_watermark_sentinel)
+    if args.verify_acks and acked_count != expected_acked_count:
         raise RuntimeError(
             "Replay verification failed: "
-            f"input_rows={input_row_count} acked={acked_count}"
+            f"expected_acked={expected_acked_count} acked={acked_count}"
         )
 
     print(

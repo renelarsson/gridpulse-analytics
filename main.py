@@ -1,5 +1,5 @@
 def main():
-    print("Hello from de-capstone!")
+    print("Hello from GridPulse Analytics!")
 
 
 if __name__ == "__main__":

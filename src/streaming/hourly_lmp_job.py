@@ -1,5 +1,6 @@
 import argparse
 import importlib
+from importlib import metadata
 import os
 from pathlib import Path
 from typing import Any
@@ -23,6 +24,9 @@ DEFAULT_POSTGRES_HOST_FOR_JOB = "postgres"
 DEFAULT_POSTGRES_PORT = 5432
 
 DEFAULT_SINK_TABLE = "stream_hourly_lmp"
+WATERMARK_SENTINEL_FIELD = "replay_control"
+WATERMARK_SENTINEL_VALUE = "watermark_flush"
+EXPECTED_FLINK_VERSION = "1.20.1"
 
 
 # Lazy import so the script can fail with a targeted message if psycopg is missing.
@@ -42,9 +46,21 @@ def load_pyflink_table() -> tuple[Any, Any]:
         pyflink_table = importlib.import_module("pyflink.table")
     except ModuleNotFoundError as exc:
         raise ModuleNotFoundError(
-            "pyflink is required to run this job. Use the dedicated .venv-flink "
-            "environment to execute src/streaming/hourly_lmp_job.py."
+            "pyflink is required to run this job. Recreate .venv-flink with "
+            "`uv venv --python 3.11 --seed .venv-flink` and install "
+            f"`apache-flink=={EXPECTED_FLINK_VERSION} psycopg[binary]`, then "
+            "execute src/streaming/hourly_lmp_job.py from that environment."
         ) from exc
+
+    installed_flink_version = metadata.version("apache-flink")
+    if installed_flink_version != EXPECTED_FLINK_VERSION:
+        raise RuntimeError(
+            "The local Docker stack uses Flink "
+            f"{EXPECTED_FLINK_VERSION}, but .venv-flink has apache-flink "
+            f"{installed_flink_version}. Recreate .venv-flink with Python 3.11 "
+            "and install "
+            f"apache-flink=={EXPECTED_FLINK_VERSION} psycopg[binary]."
+        )
 
     return pyflink_table.EnvironmentSettings, pyflink_table.TableEnvironment
 
@@ -202,7 +218,15 @@ def main() -> None:
 
     # Submit to the remote JobManager exposed by the local Flink container.
     settings = EnvironmentSettings.in_streaming_mode()
-    t_env = TableEnvironment.create(settings)
+    try:
+        t_env = TableEnvironment.create(settings)
+    except ModuleNotFoundError as exc:
+        if exc.name == "pkg_resources":
+            raise ModuleNotFoundError(
+                "The .venv-flink environment is missing pkg_resources. Install "
+                "`setuptools<81` in .venv-flink, then rerun the job."
+            ) from exc
+        raise
 
     # Register the remote target and attach the connector jars to the pipeline.
     config = t_env.get_config().get_configuration()
@@ -226,6 +250,7 @@ def main() -> None:
       market_timestamp_utc STRING,
       location_name STRING,
       lmp_total STRING,
+            replay_control STRING,
             event_time AS TO_TIMESTAMP(
                 SUBSTRING(market_timestamp_utc, 1, 19),
                 'yyyy-MM-dd HH:mm:ss'
@@ -290,6 +315,7 @@ def main() -> None:
     FROM TABLE(
       TUMBLE(TABLE day_ahead_events, DESCRIPTOR(event_time), {window_interval})
     )
+        WHERE replay_control IS NULL OR replay_control <> '{WATERMARK_SENTINEL_VALUE}'
     GROUP BY location_name, window_start, window_end
     """.strip()
 

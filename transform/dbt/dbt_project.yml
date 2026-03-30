@@ -1,4 +1,4 @@
-name: de_capstone
+name: gridpulse_analytics
 version: 1.0
 config-version: 2
 
@@ -9,4 +9,4 @@ model-paths: ["models"]
 models:
   +materialized: view
 
-profile: de_capstone
+profile: gridpulse_analytics

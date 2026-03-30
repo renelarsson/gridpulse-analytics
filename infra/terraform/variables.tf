@@ -31,7 +31,7 @@ variable "labels" {
   description = "Common labels applied to supported resources."
   type        = map(string)
   default = {
-    project = "de-capstone"
+    project = "gridpulse-analytics"
     source  = "iso-ne"
     layer   = "raw"
   }

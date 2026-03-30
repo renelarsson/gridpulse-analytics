@@ -43,9 +43,23 @@ This is intentionally not the full cloud build-out yet. It does not create GCS, 
 cd infra/terraform
 terraform init
 cp terraform.tfvars.example terraform.tfvars
+terraform validate
 terraform plan
 terraform apply
 ```
+
+If you want a non-backend initialization just to validate the local configuration shape first, run:
+
+```bash
+cd infra/terraform
+terraform init -backend=false
+terraform validate
+```
+
+Current validated result in this repo environment:
+
+- `terraform init -backend=false` succeeded
+- `terraform validate` returned `Success! The configuration is valid.`
 
 ## Notes
 

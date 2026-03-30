@@ -1,7 +1,7 @@
 resource "google_bigquery_dataset" "iso_ne_raw" {
   dataset_id                 = var.raw_dataset_id
   friendly_name              = "ISO-NE Raw Landing"
-  description                = "Raw ISO-NE landing tables for the de-capstone warehouse path."
+  description                = "Raw ISO-NE landing tables for the GridPulse Analytics warehouse path."
   location                   = var.bigquery_location
   delete_contents_on_destroy = false
 
@@ -10,7 +10,7 @@ resource "google_bigquery_dataset" "iso_ne_raw" {
 
 resource "google_service_account" "raw_loader" {
   account_id   = var.loader_service_account_id
-  display_name = "de-capstone raw loader"
+  display_name = "GridPulse Analytics raw loader"
   description  = "Service account for the validated dlt raw BigQuery landing path."
 }
 

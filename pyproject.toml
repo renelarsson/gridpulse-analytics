@@ -1,5 +1,5 @@
 [project]
-name = "de-capstone"
+name = "gridpulse-analytics"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
@@ -8,11 +8,13 @@ dependencies = [
     "dbt-bigquery>=1.11.1",
     "dbt-core>=1.11.7",
     "dlt[bigquery,postgres]>=1.23.0",
+    "google-cloud-bigquery>=3.40.1",
     "kafka-python>=2.3.0",
-    "pandas>=3.0.1",
+    "pandas>=2.2.3,<3",
     "psycopg[binary]>=3.3.3",
     "pydantic>=2.12.5",
     "requests>=2.32.5",
+    "streamlit>=1.45.1",
 ]
 
 [dependency-groups]

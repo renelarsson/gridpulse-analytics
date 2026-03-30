@@ -2,4 +2,56 @@ version: 2
 
 models:
   - name: stg_iso_ne_day_ahead_hourly_lmp
-    description: "First staging model for ISO-NE day-ahead hourly LMP data. Column-level tests should be added after the raw BigQuery schema is confirmed."
+    description: "Typed staging model for ISO-NE day-ahead hourly LMP data loaded from the raw BigQuery landing table."
+    columns:
+      - name: market_date
+        description: "Market date parsed from the ISO-NE MM/DD/YYYY source format."
+        tests:
+          - not_null
+      - name: hour_ending
+        description: "ISO-NE hour ending converted from the raw zero-padded string to an integer."
+        tests:
+          - not_null
+      - name: market_timestamp_utc
+        description: "UTC timestamp derived from market_date and hour_ending using America/New_York market time."
+        tests:
+          - not_null
+      - name: market_type
+        description: "Static market type for this first warehouse slice."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['day-ahead']
+      - name: location_id
+        description: "ISO-NE location identifier preserved from the raw report."
+        tests:
+          - not_null
+      - name: location_name
+        description: "ISO-NE location name preserved from the raw report."
+        tests:
+          - not_null
+      - name: location_type
+        description: "ISO-NE location type preserved from the raw report."
+        tests:
+          - not_null
+      - name: lmp_total
+        description: "Locational marginal price cast to a numeric warehouse type."
+        tests:
+          - not_null
+      - name: source_file
+        description: "Raw report filename preserved for lineage."
+        tests:
+          - not_null
+      - name: source_row_number
+        description: "Original row number from the raw source file, cast to integer."
+        tests:
+          - not_null
+      - name: _dlt_load_id
+        description: "DLT load identifier for tracking data lineage."
+        tests:
+          - not_null
+      - name: _dlt_id
+        description: "DLT unique identifier for deduplication and lineage tracking."
+        tests:
+          - not_null
