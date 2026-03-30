@@ -396,13 +396,17 @@ psql -U postgres -d market_data -c 'SELECT COUNT(*) AS row_count FROM "iso_ne_ra
 Check the BigQuery landing:
 
 ```bash
+export BIGQUERY_PROJECT_ID=your-gcp-project-id
+
 uv run python - <<'PY'
+import os
 from google.cloud import bigquery
 
-client = bigquery.Client(project="de-zoomcamp-485107")
-query = """
+project_id = os.environ["BIGQUERY_PROJECT_ID"]
+client = bigquery.Client(project=project_id)
+query = f"""
 SELECT COUNT(*) AS row_count
-FROM `de-zoomcamp-485107.iso_ne_raw.day_ahead_hourly_lmp_raw`
+FROM `{project_id}.iso_ne_raw.day_ahead_hourly_lmp_raw`
 """
 for row in client.query(query).result():
     print(f"row_count={row['row_count']}")
@@ -424,7 +428,7 @@ Purpose: transform the raw warehouse tables into typed staging and analytics mar
 Point dbt at the repo-local profile:
 
 ```bash
-export DBT_PROFILES_DIR=/workspaces/de-capstone/transform/dbt/profiles
+export DBT_PROFILES_DIR="$PWD/transform/dbt/profiles"
 ```
 
 Validate the dbt connection:
@@ -473,15 +477,17 @@ Check row-count parity between raw and staging:
 
 ```bash
 uv run python - <<'PY'
+import os
 from google.cloud import bigquery
 
-client = bigquery.Client(project="de-zoomcamp-485107")
-query = """
+project_id = os.environ["BIGQUERY_PROJECT_ID"]
+client = bigquery.Client(project=project_id)
+query = f"""
 SELECT 'raw' AS layer, COUNT(*) AS row_count
-FROM `de-zoomcamp-485107.iso_ne_raw.day_ahead_hourly_lmp_raw`
+FROM `{project_id}.iso_ne_raw.day_ahead_hourly_lmp_raw`
 UNION ALL
 SELECT 'staging' AS layer, COUNT(*) AS row_count
-FROM `de-zoomcamp-485107.dbt_iso_ne.stg_iso_ne_day_ahead_hourly_lmp`
+FROM `{project_id}.dbt_iso_ne.stg_iso_ne_day_ahead_hourly_lmp`
 """
 for row in client.query(query).result():
     print(f"{row['layer']}={row['row_count']}")
@@ -492,12 +498,14 @@ Check the hourly warehouse mart:
 
 ```bash
 uv run python - <<'PY'
+import os
 from google.cloud import bigquery
 
-client = bigquery.Client(project="de-zoomcamp-485107")
-query = """
+project_id = os.environ["BIGQUERY_PROJECT_ID"]
+client = bigquery.Client(project=project_id)
+query = f"""
 SELECT COUNT(*) AS row_count
-FROM `de-zoomcamp-485107.dbt_iso_ne.mrt_hourly_lmp_by_location`
+FROM `{project_id}.dbt_iso_ne.mrt_hourly_lmp_by_location`
 """
 for row in client.query(query).result():
     print(f"hourly_row_count={row['row_count']}")
@@ -508,12 +516,14 @@ Check the dashboard-facing daily mart:
 
 ```bash
 uv run python - <<'PY'
+import os
 from google.cloud import bigquery
 
-client = bigquery.Client(project="de-zoomcamp-485107")
-query = """
+project_id = os.environ["BIGQUERY_PROJECT_ID"]
+client = bigquery.Client(project=project_id)
+query = f"""
 SELECT COUNT(*) AS row_count
-FROM `de-zoomcamp-485107.dbt_iso_ne.mrt_daily_lmp_summary_by_location`
+FROM `{project_id}.dbt_iso_ne.mrt_daily_lmp_summary_by_location`
 """
 for row in client.query(query).result():
     print(f"daily_row_count={row['row_count']}")
@@ -524,12 +534,14 @@ Check the warehouse partitioning and clustering metadata:
 
 ```bash
 uv run python - <<'PY'
+import os
 from google.cloud import bigquery
 
-client = bigquery.Client(project="de-zoomcamp-485107")
+project_id = os.environ["BIGQUERY_PROJECT_ID"]
+client = bigquery.Client(project=project_id)
 for table_name in [
-    "de-zoomcamp-485107.dbt_iso_ne.mrt_hourly_lmp_by_location",
-    "de-zoomcamp-485107.dbt_iso_ne.mrt_daily_lmp_summary_by_location",
+    f"{project_id}.dbt_iso_ne.mrt_hourly_lmp_by_location",
+    f"{project_id}.dbt_iso_ne.mrt_daily_lmp_summary_by_location",
 ]:
     table = client.get_table(table_name)
     print(table_name)
@@ -583,7 +595,7 @@ The app exposes two explicit tiles required by the rubric guidance:
 Check syntax before launch:
 
 ```bash
-/workspaces/de-capstone/.venv/bin/python -m py_compile apps/streamlit/app.py
+uv run python -m py_compile apps/streamlit/app.py
 ```
 
 Check that the Streamlit server starts:

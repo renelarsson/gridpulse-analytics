@@ -1,4 +1,4 @@
-project_id                = "de-zoomcamp-485107"
+project_id                = "your-gcp-project-id"
 region                    = "europe-west1"
 bigquery_location         = "EU"
 raw_dataset_id            = "iso_ne_raw"

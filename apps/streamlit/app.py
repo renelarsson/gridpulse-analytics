@@ -6,14 +6,25 @@ import streamlit as st
 from google.cloud import bigquery
 
 
-DEFAULT_PROJECT_ID = os.getenv("BIGQUERY_PROJECT_ID", "de-zoomcamp-485107")
-DEFAULT_DAILY_SUMMARY_TABLE = os.getenv(
-    "STREAMLIT_DAILY_SUMMARY_TABLE",
-    "de-zoomcamp-485107.dbt_iso_ne.mrt_daily_lmp_summary_by_location",
+DEFAULT_PROJECT_ID = os.getenv("BIGQUERY_PROJECT_ID", "")
+DEFAULT_DATASET_ID = os.getenv("BIGQUERY_DATASET_ID", "dbt_iso_ne")
+
+
+def build_default_table_name(project_id: str, dataset_id: str, table_id: str) -> str:
+    if not project_id:
+        return ""
+    return f"{project_id}.{dataset_id}.{table_id}"
+
+
+DEFAULT_DAILY_SUMMARY_TABLE = os.getenv("STREAMLIT_DAILY_SUMMARY_TABLE") or build_default_table_name(
+    DEFAULT_PROJECT_ID,
+    DEFAULT_DATASET_ID,
+    "mrt_daily_lmp_summary_by_location",
 )
-DEFAULT_HOURLY_MART_TABLE = os.getenv(
-    "STREAMLIT_HOURLY_MART_TABLE",
-    "de-zoomcamp-485107.dbt_iso_ne.mrt_hourly_lmp_by_location",
+DEFAULT_HOURLY_MART_TABLE = os.getenv("STREAMLIT_HOURLY_MART_TABLE") or build_default_table_name(
+    DEFAULT_PROJECT_ID,
+    DEFAULT_DATASET_ID,
+    "mrt_hourly_lmp_by_location",
 )
 
 
@@ -125,6 +136,13 @@ def main() -> None:
             "Hourly mart table",
             value=DEFAULT_HOURLY_MART_TABLE,
         )
+
+    if not project_id or not table_name or not hourly_table_name:
+        st.info(
+            "Set BIGQUERY_PROJECT_ID or enter the BigQuery project and mart table names in the "
+            "sidebar before querying the dashboard."
+        )
+        st.stop()
 
     try:
         market_dates = load_market_dates(project_id, table_name)

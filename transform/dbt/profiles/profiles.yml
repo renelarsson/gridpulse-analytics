@@ -4,7 +4,7 @@ gridpulse_analytics:
     dev:
       type: bigquery
       method: service-account
-      project: de-zoomcamp-485107
+      project: "{{ env_var('BIGQUERY_PROJECT_ID') }}"
       dataset: dbt_iso_ne
       threads: 4
       keyfile: "{{ env_var('GOOGLE_APPLICATION_CREDENTIALS') }}"
