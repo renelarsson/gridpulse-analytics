@@ -7,4 +7,4 @@ gridpulse_analytics:
       project: de-zoomcamp-485107
       dataset: dbt_iso_ne
       threads: 4
-      keyfile: /workspaces/de-capstone/my-creds/de-zoomcamp-485107-3cbafa3d7c94.json
+      keyfile: "{{ env_var('GOOGLE_APPLICATION_CREDENTIALS') }}"

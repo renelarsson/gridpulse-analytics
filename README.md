@@ -361,7 +361,7 @@ uv run python -m src.ingestion.dlt_raw_ingestion \
 Export the GCP service-account path for BigQuery:
 
 ```bash
-export GOOGLE_APPLICATION_CREDENTIALS=/workspaces/de-capstone/my-creds/de-zoomcamp-485107-3cbafa3d7c94.json
+export GOOGLE_APPLICATION_CREDENTIALS=/path/to/your-service-account.json
 ```
 
 Run the BigQuery raw landing:
@@ -558,7 +558,7 @@ Purpose: serve the modeled warehouse outputs through a simple interface with one
 Ensure the same GCP credential is exported in the current shell:
 
 ```bash
-export GOOGLE_APPLICATION_CREDENTIALS=/workspaces/de-capstone/my-creds/de-zoomcamp-485107-3cbafa3d7c94.json
+export GOOGLE_APPLICATION_CREDENTIALS=/path/to/your-service-account.json
 ```
 
 Start the dashboard:
