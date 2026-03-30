@@ -1,0 +1,38 @@
+version: 2
+
+models:
+  - name: mrt_daily_lmp_summary_by_location
+    description: "Dashboard-facing daily summary built from the validated hourly location mart."
+    columns:
+      - name: market_date
+        description: "ISO-NE market date derived from the hourly window start in America/New_York business time."
+        tests:
+          - not_null
+      - name: location_name
+        description: "Location key shared with the hourly warehouse and streaming outputs."
+        tests:
+          - not_null
+      - name: avg_lmp_total_day
+        description: "Weighted average daily LMP across the hourly buckets for the location."
+        tests:
+          - not_null
+      - name: peak_hourly_lmp_total
+        description: "Highest hourly LMP observed for the location on the market date."
+        tests:
+          - not_null
+      - name: peak_window_start
+        description: "UTC start of the hourly window where the daily peak LMP occurred."
+        tests:
+          - not_null
+      - name: peak_window_end
+        description: "UTC end of the hourly window where the daily peak LMP occurred."
+        tests:
+          - not_null
+      - name: hours_included
+        description: "Number of hourly buckets included in the daily summary for the location."
+        tests:
+          - not_null
+      - name: source_rows_included
+        description: "Total hourly-mart source rows rolled into the daily summary for the location."
+        tests:
+          - not_null

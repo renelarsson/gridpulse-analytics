@@ -1,0 +1,30 @@
+version: 2
+
+models:
+  - name: mrt_hourly_lmp_by_location
+    description: "First warehouse mart at the same hourly location grain as the current streaming sink output."
+    columns:
+      - name: location_name
+        description: "Shared location dimension used by the current streaming sink and warehouse mart."
+        tests:
+          - not_null
+      - name: window_start
+        description: "UTC start of the hourly bucket aligned with the warehouse staging timestamp."
+        tests:
+          - not_null
+      - name: window_end
+        description: "UTC end of the hourly bucket one hour after window_start."
+        tests:
+          - not_null
+      - name: avg_lmp_total
+        description: "Average locational marginal price for the location and hour."
+        tests:
+          - not_null
+      - name: max_lmp_total
+        description: "Maximum locational marginal price for the location and hour."
+        tests:
+          - not_null
+      - name: row_count
+        description: "Number of staged source rows contributing to the location-hour metric."
+        tests:
+          - not_null
